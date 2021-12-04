@@ -97,14 +97,14 @@ class MADDPG:
         return torch.FloatTensor(inputs).to(self.device)
 
     def choose_action(self, states):
-        # actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
-        actions = []
-        for i in range(self.n_agent):
-            if np.random.rand() < self.epsilon:
-                action = torch.argmax(self.actors[i](self.to_tensor(states[i]))).item()
-            else:
-                action = np.random.choice(self.action_size)
-            actions.append(int(action))
+        actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
+        # actions = []
+        # for i in range(self.n_agent):
+        #     if np.random.rand() < self.epsilon:
+        #         action = torch.argmax(self.actors[i](self.to_tensor(states[i]))).item()
+        #     else:
+        #         action = np.random.choice(self.action_size)
+        #     actions.append(int(action))
         return actions
 
     def learn(self, s, a, r, sn, d):
@@ -121,12 +121,15 @@ class MADDPG:
         for i in range(self.n_agent):
             cur_action = all_action.clone()
             action = F.gumbel_softmax(self.actors[i](states[i]), hard=True)
+            action = self.actors[i](states[i])
             action_size = action.shape[1]
             cur_action[:, action_size * i: action_size * (i + 1)] = action
             actor_loss = -torch.mean(self.critics[i](all_state, cur_action))
             actor_losses += actor_loss
 
-        actions_next = [F.gumbel_softmax(actor_target(state_next), hard=True).detach() for
+        # actions_next = [F.gumbel_softmax(actor_target(state_next), hard=True).detach() for
+        #                 state_next, actor_target in zip(states_next, self.actors_target)]
+        actions_next = [actor_target(state_next).detach() for
                         state_next, actor_target in zip(states_next, self.actors_target)]
         all_action_next = torch.cat(actions_next, dim=1)
         critic_losses = 0
@@ -141,14 +144,14 @@ class MADDPG:
         # self.actor_optim.zero_grad()
         [actor_optim.zero_grad() for actor_optim in self.actors_optim]
         actor_losses.backward()
-        [nn.utils.clip_grad_norm_(actor.parameters(), 0.3) for actor in self.actors]
+        [nn.utils.clip_grad_norm_(actor.parameters(), 0.1) for actor in self.actors]
         # self.actor_optim.step()
         [actor_optim.step() for actor_optim in self.actors_optim]
         # critic
         # self.critic_optim.zero_grad()
         [critic_optim.zero_grad() for critic_optim in self.critics_optim]
         critic_losses.backward()
-        [nn.utils.clip_grad_norm_(critic.parameters(), 0.3) for critic in self.critics]
+        [nn.utils.clip_grad_norm_(critic.parameters(), 0.1) for critic in self.critics]
         # self.critic_optim.step()
         [critic_optim.step() for critic_optim in self.critics_optim]
 
