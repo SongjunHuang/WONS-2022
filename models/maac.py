@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+from utils.gumble_softmax import *
 
 
 class Actor(nn.Module):
@@ -59,7 +60,7 @@ class Critic(nn.Module):
 
 class MADDPG:
     def __init__(self, state_size, action_size, n_agent, gamma=0.99,
-                 lr_actor=0.01, lr_critic=0.05, epsilon=0.8, update_freq=200):
+                 lr_actor=0.01, lr_critic=0.05, epsilon=0.6, update_freq=200):
         self.state_size = state_size
         self.action_size = action_size
         self.n_agent = n_agent
@@ -72,8 +73,8 @@ class MADDPG:
         self.actors = [Actor(state_size, action_size).to(self.device) for _ in range(n_agent)]
         self.actors_target = [Actor(state_size, action_size).to(self.device) for _ in range(n_agent)]
 
-        self.critics = [Critic(state_size * n_agent, action_size * n_agent).to(self.device) for _ in range(n_agent)]
-        self.critics_target = [Critic(state_size * n_agent, action_size * n_agent).to(self.device) for _ in range(n_agent)]
+        self.critics = [Critic(state_size * n_agent, 1 * n_agent).to(self.device) for _ in range(n_agent)]
+        self.critics_target = [Critic(state_size * n_agent, 1 * n_agent).to(self.device) for _ in range(n_agent)]
         # self.critic = Critic(state_size * n_agent, action_size * n_agent).to(self.device)
         # self.critic_target = Critic(state_size * n_agent, action_size * n_agent).to(self.device)
 
@@ -98,14 +99,10 @@ class MADDPG:
         return torch.FloatTensor(inputs).to(self.device)
 
     def choose_action(self, states):
-        actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
-        # actions = []
-        # for i in range(self.n_agent):
-        #     if np.random.rand() < self.epsilon:
-        #         action = torch.argmax(self.actors[i](self.to_tensor(states[i]))).item()
-        #     else:
-        #         action = np.random.choice(self.action_size)
-        #     actions.append(int(action))
+        # actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
+        actions = [onehot_from_logits(actor(self.to_tensor(state).view(1, -1)), self.epsilon).detach().cpu().numpy()
+                   for actor, state in zip(self.actors, states)]
+        actions = [np.argmax(action) for action in actions]
         return actions
 
     def learn(self, s, a, r, sn, d):
@@ -116,23 +113,22 @@ class MADDPG:
         states_next = [self.to_tensor(state_next) for state_next in sn]
         dones = [self.to_tensor(done.astype(int)) for done in d]
         all_state = torch.cat(states, dim=1)
-        all_action = torch.cat(actions, dim=1)
+        all_action = torch.stack(actions, dim=1)
         all_state_next = torch.cat(states_next, dim=1)
         actor_losses = 0
         for i in range(self.n_agent):
             cur_action = all_action.clone()
-            action = F.gumbel_softmax(self.actors[i](states[i]), hard=True)
-            action = self.actors[i](states[i])
-            action_size = action.shape[1]
-            cur_action[:, action_size * i: action_size * (i + 1)] = action
+            action = gumbel_softmax(self.actors[i](states[i]))
+            action = torch.argmax(action, dim=1)
+            # action_size = action.shape[1]
+            cur_action[:, i] = action
             actor_loss = -torch.mean(self.critics[i](all_state, cur_action))
             actor_losses += actor_loss
 
-        # actions_next = [F.gumbel_softmax(actor_target(state_next), hard=True).detach() for
-        #                 state_next, actor_target in zip(states_next, self.actors_target)]
-        actions_next = [actor_target(state_next).detach() for
-                        state_next, actor_target in zip(states_next, self.actors_target)]
-        all_action_next = torch.cat(actions_next, dim=1)
+        actions_next = [onehot_from_logits(actor_target(state_next), self.epsilon).detach()
+                        for state_next, actor_target in zip(states_next, self.actors_target)]
+        actions_next = [torch.argmax(action_next, dim=1) for action_next in actions_next]
+        all_action_next = torch.stack(actions_next, dim=1)
         critic_losses = 0
         for i in range(self.n_agent):
             next_value = self.critics_target[i](all_state_next, all_action_next)
@@ -140,19 +136,22 @@ class MADDPG:
             target = rewards[i] + self.gamma * next_value.detach()
             critic_loss = F.mse_loss(Q, target)
             critic_losses += critic_loss
+            # print(Q, target)
+
+        # print(actor_losses, critic_losses)
 
         # actor
         # self.actor_optim.zero_grad()
         [actor_optim.zero_grad() for actor_optim in self.actors_optim]
         actor_losses.backward()
-        [nn.utils.clip_grad_norm_(actor.parameters(), 0.1) for actor in self.actors]
+        [nn.utils.clip_grad_norm_(actor.parameters(), 0.3) for actor in self.actors]
         # self.actor_optim.step()
         [actor_optim.step() for actor_optim in self.actors_optim]
         # critic
         # self.critic_optim.zero_grad()
         [critic_optim.zero_grad() for critic_optim in self.critics_optim]
         critic_losses.backward()
-        [nn.utils.clip_grad_norm_(critic.parameters(), 0.1) for critic in self.critics]
+        [nn.utils.clip_grad_norm_(critic.parameters(), 0.3) for critic in self.critics]
         # self.critic_optim.step()
         [critic_optim.step() for critic_optim in self.critics_optim]
 

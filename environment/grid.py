@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
+import torch.nn.functional
 
 
 class Robot(object):
@@ -111,50 +112,51 @@ class GridEnv(object):
             return [False if entry < 1 else True for entry in temp]
 
     def step(self, actions):
-        offset = None
         exploration_counts = np.zeros(self.n_agents)
         for i, (agent, action) in enumerate(zip(self.agents, actions)):
             agent.trajectory.append(agent.pos)
             maxx, maxy, minx, miny = self.world.maxx, self.world.maxy, self.world.minx, self.world.miny
-            action = np.argmax(action)
+            # action = np.argmax(action)
+            offset, angle_offset = None, None
             if action == 0:
                 offset = np.asarray([-self.step_size, 0])  # left
-                angle =0
+                angle_offset = 0
             if action == 1:
                 offset = np.asarray([self.step_size, 0])  # right
-                angle = 0
+                angle_offset = 0
             if action == 2:
                 offset = np.asarray([0, self.step_size])  # forward
-                angle = 0
+                angle_offset = 0
             if action == 3:
                 offset = np.asarray([0, -self.step_size])  # backward
-                angle = 0
+                angle_offset = 0
             if action == 4:
                 offset = np.asarray([-self.step_size, 0])  # left
-                angle =120
+                angle_offset = 120
             if action == 5:
                 offset = np.asarray([self.step_size, 0])  # right
-                angle = 120
+                angle_offset = 120
             if action == 6:
                 offset = np.asarray([0, self.step_size])  # forward
-                angle = 120
+                angle_offset = 120
             if action == 7:
                 offset = np.asarray([0, -self.step_size])  # backward
-                angle = 120
+                angle_offset = 120
             if action == 8:
                 offset = np.asarray([-self.step_size, 0])  # left
-                angle =240
+                angle_offset = 240
             if action == 9:
                 offset = np.asarray([self.step_size, 0])  # right
-                angle = 240
+                angle_offset = 240
             if action == 10:
                 offset = np.asarray([0, self.step_size])  # forward
-                angle = 240
+                angle_offset = 240
             if action == 11:
                 offset = np.asarray([0, -self.step_size])  # backward
-                angle = 240
+                angle_offset = 240
             agent.pos = np.clip(agent.pos + offset, [minx + 1, miny + 1], [maxx - 1, maxy - 1])
-            agent.angle = angle % 360
+            agent.angle = angle_offset
+            # print(agent.pos, agent.angle)
             exploration_count = self.world.generate_ray_casting_grid_map(agent.pos[0], agent.pos[1], agent.angle)
             exploration_counts[i] = exploration_count
         collisions = self.collision()
