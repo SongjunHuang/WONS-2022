@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -58,11 +59,12 @@ class Critic(nn.Module):
 
 class MADDPG:
     def __init__(self, state_size, action_size, n_agent, gamma=0.99,
-                 lr_actor=0.01, lr_critic=0.05, update_freq=200):
+                 lr_actor=0.01, lr_critic=0.05, epsilon=0.8, update_freq=200):
         self.state_size = state_size
         self.action_size = action_size
         self.n_agent = n_agent
         self.gamma = gamma
+        self.epsilon = epsilon
         self.update_freq = update_freq
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print("Using device {}".format(self.device))
@@ -96,7 +98,14 @@ class MADDPG:
         return torch.FloatTensor(inputs).to(self.device)
 
     def choose_action(self, states):
-        actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
+        # actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
+        actions = []
+        for i in range(self.n_agent):
+            if np.random.rand() < self.epsilon:
+                action = torch.argmax(self.actors[i](self.to_tensor(states[i]))).item()
+            else:
+                action = np.random.choice(self.action_size)
+            actions.append(int(action))
         return actions
 
     def learn(self, s, a, r, sn, d):
@@ -112,13 +121,14 @@ class MADDPG:
         actor_losses = 0
         for i in range(self.n_agent):
             cur_action = all_action.clone()
-            action = self.actors[i](states[i])
+            action = F.gumbel_softmax(self.actors[i](states[i]), hard=True)
             action_size = action.shape[1]
             cur_action[:, action_size * i: action_size * (i + 1)] = action
             actor_loss = -torch.mean(self.critics[i](all_state, cur_action))
             actor_losses += actor_loss
 
-        actions_next = [actor_target(state_next).detach() for state_next, actor_target in zip(states_next, self.actors_target)]
+        actions_next = [F.gumbel_softmax(actor_target(state_next), hard=True).detach() for
+                        state_next, actor_target in zip(states_next, self.actors_target)]
         all_action_next = torch.cat(actions_next, dim=1)
         critic_losses = 0
         for i in range(self.n_agent):
