@@ -13,8 +13,7 @@ class Actor(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(128, action_space),
-            nn.Tanh()
+            nn.Linear(128, action_space)
         )
 
     def forward(self, state):
