@@ -19,7 +19,7 @@ class Config:
     grid_width = 20
     grid_height = 20
     fov = 120
-    step_size = 1
+    step_size = 2
     xyreso = 1
     yawreso = 5
     sensing_range = 8

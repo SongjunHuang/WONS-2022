@@ -42,9 +42,10 @@ def play(is_testing):
             steps += 1
             # act
             actions = maddpgs.choose_action(states)
+            # print(actions)
             # print(states, actions)
-            for i in range(env.n_agents):
-                actions[i] = np.clip(actions[i] + actors_noise[i](), -2, 2)
+            # for i in range(env.n_agents):
+            #     actions[i] = np.clip(actions[i] + actors_noise[i](), -2, 2)
                 # actions[i] = actions[i] + actors_noise[i]()
                 # actions.append(action)
             # print(actions)
