@@ -60,7 +60,7 @@ class Critic(nn.Module):
 
 class MADDPG:
     def __init__(self, state_size, action_size, n_agent, gamma=0.99, lr_actor=0.01, lr_critic=0.05,
-                 EPS_START=0.9, EPS_END = 0.05, EPS_DECAY = 100, update_freq=200):
+                 EPS_START=0.9, EPS_END=0.2, EPS_DECAY=100, update_freq=200):
         self.state_size = state_size
         self.action_size = action_size
         self.n_agent = n_agent
