@@ -42,7 +42,6 @@ def play(is_testing):
             steps += 1
             # act
             actions = maddpgs.choose_action(states)
-            # print(actions)
             # print(states, actions)
             # for i in range(env.n_agents):
             #     actions[i] = np.clip(actions[i] + actors_noise[i](), -2, 2)
@@ -101,7 +100,7 @@ def play(is_testing):
                 statistic.extend([actors_noise[i].dt for i in range(env.n_agents)])
                 statistic.extend([actors_noise[i].x0 for i in range(env.n_agents)])
                 statistics.add_statistics(statistic)
-                if episode % 50 == 0:
+                if episode % 25 == 0:
                     print(statistics.summarize_last())
                     # env.visualize()
                 break
@@ -131,7 +130,8 @@ if __name__ == '__main__':
             # init env
             world = GridWorld(Config.grid_width, Config.grid_height, Config.fov, Config.xyreso, Config.yawreso,
                               Config.sensing_range, Config.n_targets)
-            env = GridEnv(world, discrete=Config.discrete, n_agents=Config.n_agents, max_step=Config.max_step, step_size=Config.step_size)
+            env = GridEnv(world, discrete=Config.discrete, n_agents=Config.n_agents,
+                          max_step=Config.max_step, step_size=Config.step_size)
 
             # Extract ou initialization values
             ou_mus = [np.zeros(env.action_space[i]) for i in range(env.n_agents)]
@@ -143,7 +143,7 @@ if __name__ == '__main__':
             # set random seed
 
             maddpgs = MADDPG(env.observation_space[0], env.action_space[0], env.n_agents,
-                             Config.gamma, Config.lr_actor, Config.lr_critic, Config.update_freq)
+                             Config.gamma, Config.lr_actor, Config.lr_critic, Config.epsilon, Config.update_freq)
             actors_noise = []
             memories = []
             for i in range(env.n_agents):

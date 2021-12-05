@@ -109,7 +109,10 @@ class MADDPG:
         states = [self.to_tensor(state) for state in s]
         actions = [self.to_tensor(action) for action in a]
         rewards = [self.to_tensor(reward) for reward in r]
-        rewards = [(reward - torch.mean(reward)) / torch.std(reward + 1e-4) for reward in rewards]
+        # print(rewards)
+        rewards = [(reward - torch.mean(reward)) / torch.std(reward) for reward in rewards]
+        # print(rewards)
+        rewards = [torch.nan_to_num(reward, nan=0.0) for reward in rewards]
         # print([np.sum(rr) for rr in r], [torch.sum(rr).item() for rr in rewards])
         states_next = [self.to_tensor(state_next) for state_next in sn]
         dones = [self.to_tensor(done.astype(int)) for done in d]
@@ -145,14 +148,14 @@ class MADDPG:
         # self.actor_optim.zero_grad()
         [actor_optim.zero_grad() for actor_optim in self.actors_optim]
         actor_losses.backward()
-        [nn.utils.clip_grad_norm_(actor.parameters(), 0.1) for actor in self.actors]
+        [nn.utils.clip_grad_norm_(actor.parameters(), 0.5) for actor in self.actors]
         # self.actor_optim.step()
         [actor_optim.step() for actor_optim in self.actors_optim]
         # critic
         # self.critic_optim.zero_grad()
         [critic_optim.zero_grad() for critic_optim in self.critics_optim]
         critic_losses.backward()
-        [nn.utils.clip_grad_norm_(critic.parameters(), 0.1) for critic in self.critics]
+        [nn.utils.clip_grad_norm_(critic.parameters(), 0.5) for critic in self.critics]
         # self.critic_optim.step()
         [critic_optim.step() for critic_optim in self.critics_optim]
         # update target networks

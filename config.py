@@ -14,6 +14,7 @@ class Config:
     discrete = False
 
     random_seed = 2022
+    epsilon=0.6
     memory_size = 100000
     batch_size = 32
     grid_width = 20
