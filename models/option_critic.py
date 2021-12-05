@@ -1,6 +1,8 @@
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical, Bernoulli
+from config import Config
 
 from math import exp
 
@@ -126,26 +128,34 @@ def critic_loss(model, model_prime, data_batch, args):
     return td_err
 
 
-def actor_loss(obs, option, logp, entropy, reward, done, next_obs, model, model_prime, args):
-    state = model.get_state(to_tensor(obs))
-    next_state = model.get_state(to_tensor(next_obs))
-    next_state_prime = model_prime.get_state(to_tensor(next_obs))
+def actor_loss(obss, options, logps, entropys, rewards, dones, next_obss, models, model_primes, argss):
+    for i in range(Config.n_agents):
+        state = models[i].get_state(to_tensor(obss[i]))
+        next_state = models[i].get_state(to_tensor(next_obss[i]))
+        next_state_prime = model_primes[i].get_state(to_tensor(next_obss)[i])
 
-    option_term_prob = model.get_terminations(state)[:, option]
-    next_option_term_prob = model.get_terminations(next_state)[:, option].detach()
+        option_term_prob = models[i].get_terminations()[:, options[i]]
+        next_option_term_prob = models[i].get_terminations(next_state)[:, options[i]].detach()
 
-    Q = model.get_Q(state).detach().squeeze()
-    next_Q_prime = model_prime.get_Q(next_state_prime).detach().squeeze()
+        Q = models[i].get_Q(state).detach().squeeze()
+        next_Q_prime = model_primes[i].get_Q(next_state_prime).detach().squeeze()
 
-    # Target update gt
-    gt = reward + (1 - done) * args.gamma * \
-         ((1 - next_option_term_prob) * next_Q_prime[option] + next_option_term_prob * next_Q_prime.max(dim=-1)[0])
+        # Target update gt
+        gt = rewards[i] + (1 - dones[i]) * argss[i].gamma * \
+             ((1 - next_option_term_prob) * next_Q_prime[options[i]] + next_option_term_prob * next_Q_prime.max(dim=-1)[0])
 
-    # The termination loss
-    termination_loss = option_term_prob * (Q[option].detach() - Q.max(dim=-1)[0].detach() + args.termination_reg) * (
-                1 - done)
+        # The termination loss
+        termination_loss = option_term_prob * (Q[options[i]].detach() - Q.max(dim=-1)[0].detach() + argss.termination_reg) * (
+                1 - dones[i])
 
-    # actor-critic policy gradient with entropy regularization
-    policy_loss = -logp * (gt.detach() - Q[option]) - args.entropy_reg * entropy -torch.mean(self.critics[i](all_state, cur_action))
-    actor_loss = termination_loss + policy_loss
+        # actor-critic policy gradient with entropy regularization
+        policy_loss = -logps[i] * (gt.detach() - Q[options[i]]) - argss.entropy_reg * entropys[i]
+
+        L = 0
+        L += np.abs(models[i].option_W[i, :, :] - models[i].option_W[1, :, :]) \
+          + np.abs(models[i].option_W[i, :, :] - models[i].option_W[2, :, :]) \
+          + np.abs(models[i].option_W[i, :, :] - models[i].option_W[3, :, :])
+
+        policy_loss += L
+        actor_loss = termination_loss + policy_loss
     return actor_loss
