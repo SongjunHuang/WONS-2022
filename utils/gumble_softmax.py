@@ -20,7 +20,7 @@ def onehot_from_logits(logits, eps=0.0):
         range(logits.shape[1]), size=logits.shape[0])]].cuda()
     # print(argmax_acs, rand_acs)
     # chooses between best and random actions using epsilon greedy
-    return torch.stack([argmax_acs[i] if r < eps else rand_acs[i] for i, r in
+    return torch.stack([argmax_acs[i] if r > eps else rand_acs[i] for i, r in
                         enumerate(torch.rand(logits.shape[0]))])
 
 def sample_gumbel(shape, eps=1e-20, tens_type=torch.FloatTensor):

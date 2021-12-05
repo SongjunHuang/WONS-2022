@@ -115,7 +115,7 @@ if __name__ == '__main__':
     random.seed(Config.random_seed)
     np.random.seed(Config.random_seed)
     torch.manual_seed(Config.random_seed)
-    for n_agent in [4, 6, 8]:
+    for n_agent in [4]:
         Config.n_agents = n_agent
         Config.update()
         print(Config.n_agents, Config.scheme, Config.comm_fail_prob)
@@ -142,8 +142,9 @@ if __name__ == '__main__':
 
             # set random seed
 
-            maddpgs = MADDPG(env.observation_space[0], env.action_space[0], env.n_agents,
-                             Config.gamma, Config.lr_actor, Config.lr_critic, Config.epsilon, Config.update_freq)
+            maddpgs = MADDPG(state_size=env.observation_space[0], action_size=env.action_space[0],
+                             n_agent=env.n_agents, gamma=Config.gamma, lr_actor=Config.lr_actor,
+                             lr_critic=Config.lr_critic, update_freq=Config.update_freq)
             actors_noise = []
             memories = []
             for i in range(env.n_agents):

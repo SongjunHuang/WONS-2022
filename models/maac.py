@@ -59,13 +59,15 @@ class Critic(nn.Module):
 
 
 class MADDPG:
-    def __init__(self, state_size, action_size, n_agent, gamma=0.99,
-                 lr_actor=0.01, lr_critic=0.05, epsilon=0.6, update_freq=200):
+    def __init__(self, state_size, action_size, n_agent, gamma=0.99, lr_actor=0.01, lr_critic=0.05,
+                 EPS_START=0.9, EPS_END = 0.05, EPS_DECAY = 100, update_freq=200):
         self.state_size = state_size
         self.action_size = action_size
         self.n_agent = n_agent
         self.gamma = gamma
-        self.epsilon = epsilon
+        self.EPS_START = EPS_START
+        self.EPS_END = EPS_END
+        self.EPS_DECAY = EPS_DECAY
         self.update_freq = update_freq
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print("Using device {}".format(self.device))
@@ -100,10 +102,13 @@ class MADDPG:
 
     def choose_action(self, states):
         # actions = [actor(self.to_tensor(state)).detach().cpu().numpy() for actor, state in zip(self.actors, states)]
-        actions = [onehot_from_logits(actor(self.to_tensor(state).view(1, -1)), self.epsilon).detach().cpu().numpy()
+        actions = [onehot_from_logits(actor(self.to_tensor(state).view(1, -1)), self.epsilon()).detach().cpu().numpy()
                    for actor, state in zip(self.actors, states)]
         actions = [np.argmax(action) for action in actions]
         return actions
+
+    def epsilon(self):
+        return self.EPS_END + (self.EPS_START - self.EPS_END) * np.exp(-1. * self.steps / self.EPS_DECAY)
 
     def learn(self, s, a, r, sn, d):
         states = [self.to_tensor(state) for state in s]
@@ -129,7 +134,7 @@ class MADDPG:
             actor_loss = -torch.mean(self.critics[i](all_state, cur_action))
             actor_losses += actor_loss
 
-        actions_next = [onehot_from_logits(actor_target(state_next), self.epsilon).detach()
+        actions_next = [onehot_from_logits(actor_target(state_next), self.epsilon()).detach()
                         for state_next, actor_target in zip(states_next, self.actors_target)]
         actions_next = [torch.argmax(action_next, dim=1) for action_next in actions_next]
         all_action_next = torch.stack(actions_next, dim=1)
