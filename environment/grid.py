@@ -29,7 +29,7 @@ class GridEnv(object):
         self.agents = None
         self.last_occupancy_map = None
         self.last_detections = None
-        self.steps = None
+        self.steps = 1
         self.reset()
 
     def random_pos(self, n):
@@ -67,7 +67,8 @@ class GridEnv(object):
         if self.discrete:
             self.agents = [Robot((i, i), 0) for i in range(self.n_agents)]
         else:
-            self.agents = [Robot(np.random.rand(2), 0) for _ in range(self.n_agents)]
+            # self.agents = [Robot(np.random.rand(2), 0) for _ in range(self.n_agents)]
+            self.agents = [Robot(np.asarray([i * 0.5, i * 0.5]), 0) for i in range(self.n_agents)]
         self.last_occupancy_map = self.world.occupancy_map.copy()
         self.last_detections = np.zeros(self.n_agents)
         self.steps = 1
@@ -80,8 +81,8 @@ class GridEnv(object):
         #         for _ in range(self.n_agents)]
         # return exploration_count / self.world.xw * self.world.yw
         # return np.sum(detected) / self.steps
-        exploration_rewards = exploration_counts / self.steps
-        rewards = exploration_rewards -100 * collisions - 100 * out_of_bounds
+        exploration_rewards = exploration_counts / (self.steps + 1)
+        rewards = exploration_rewards - 100 * collisions - 100 * out_of_bounds
         # self.last_detections = detected
         return rewards
 

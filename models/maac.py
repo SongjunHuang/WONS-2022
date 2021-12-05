@@ -45,11 +45,11 @@ class Critic(nn.Module):
     def __init__(self, state_space, action_space):
         super(Critic, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(state_space + action_space, 512),
+            nn.Linear(state_space + action_space, 256),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(512, 1)
+            nn.Linear(256, 1)
         )
 
     def forward(self, state, action):
@@ -109,7 +109,8 @@ class MADDPG:
         states = [self.to_tensor(state) for state in s]
         actions = [self.to_tensor(action) for action in a]
         rewards = [self.to_tensor(reward) for reward in r]
-        rewards = [(reward - torch.mean(reward)) / torch.std(reward) for reward in rewards]
+        rewards = [(reward - torch.mean(reward)) / torch.std(reward + 1e-4) for reward in rewards]
+        # print([np.sum(rr) for rr in r], [torch.sum(rr).item() for rr in rewards])
         states_next = [self.to_tensor(state_next) for state_next in sn]
         dones = [self.to_tensor(done.astype(int)) for done in d]
         all_state = torch.cat(states, dim=1)
@@ -134,9 +135,9 @@ class MADDPG:
             next_value = self.critics_target[i](all_state_next, all_action_next)
             Q = self.critics[i](all_state, all_action)
             target = rewards[i] + self.gamma * next_value.detach()
-            critic_loss = F.mse_loss(Q, target)
+            critic_loss = F.mse_loss(Q, target, reduction='mean')
             critic_losses += critic_loss
-            # print(Q, target)
+            # print(Q)
 
         # print(actor_losses, critic_losses)
 
@@ -144,22 +145,20 @@ class MADDPG:
         # self.actor_optim.zero_grad()
         [actor_optim.zero_grad() for actor_optim in self.actors_optim]
         actor_losses.backward()
-        [nn.utils.clip_grad_norm_(actor.parameters(), 0.3) for actor in self.actors]
+        [nn.utils.clip_grad_norm_(actor.parameters(), 0.1) for actor in self.actors]
         # self.actor_optim.step()
         [actor_optim.step() for actor_optim in self.actors_optim]
         # critic
         # self.critic_optim.zero_grad()
         [critic_optim.zero_grad() for critic_optim in self.critics_optim]
         critic_losses.backward()
-        [nn.utils.clip_grad_norm_(critic.parameters(), 0.3) for critic in self.critics]
+        [nn.utils.clip_grad_norm_(critic.parameters(), 0.1) for critic in self.critics]
         # self.critic_optim.step()
         [critic_optim.step() for critic_optim in self.critics_optim]
-
         # update target networks
         if self.steps % self.update_freq == 0:
             self.update_target()
         self.steps += 1
-        # print(actor_losses, critic_losses)
 
         return (actor_losses + critic_losses).item()
 

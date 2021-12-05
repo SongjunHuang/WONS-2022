@@ -124,7 +124,7 @@ if __name__ == '__main__':
         # print("running experiment for {} agents".format(n_agent))
         if not os.path.exists(Config.experiment_prefix + Config.scheme):
             os.makedirs(Config.experiment_prefix + Config.scheme)
-        for rounds in range(8):
+        for rounds in range(5):
             # general_utilities.dump_dict_as_json(general_utilities.get_vars(vars(Config)),
             #                                     Config.experiment_prefix + "/save/run_parameters_{}.json".format(rounds))
 

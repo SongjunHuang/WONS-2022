@@ -13,9 +13,9 @@ class Config:
     model_filename_prefix_template = '/model/model-{}'
     discrete = False
 
-    random_seed = 2021
+    random_seed = 2022
     memory_size = 100000
-    batch_size = 50
+    batch_size = 32
     grid_width = 20
     grid_height = 20
     fov = 120
