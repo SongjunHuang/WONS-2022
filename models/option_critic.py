@@ -81,7 +81,7 @@ class OptionCriticFeatures(nn.Module):
         logp = action_dist.log_prob(action)
         entropy = action_dist.entropy()
 
-        return action.squeeze(), logp, entropy
+        return action.detach(), logp, entropy
 
     def greedy_option(self, state):
         Q = self.get_Q(state)

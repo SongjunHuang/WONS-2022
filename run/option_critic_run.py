@@ -93,7 +93,7 @@ def play(is_testing):
                 memories[i].push(obs[i], current_options[i], reward[i], next_ob[i], done[i])
 
                 old_states = states
-                states[i] = option_critic[i].get_state(to_tensor(next_ob[i]))
+                states[i] = option_critic[i].get_state(to_tensor(next_ob[i])).detach()
                 option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i], current_options[i])
 
                 # next_obs.append(next_ob)
@@ -172,7 +172,7 @@ def play(is_testing):
                 statistic.extend([actors_noise[i].dt for i in range(env.n_agents)])
                 statistic.extend([actors_noise[i].x0 for i in range(env.n_agents)])
                 statistics.add_statistics(statistic)
-                if episode % 50 == 0:
+                if episode % 25 == 0:
                     print(statistics.summarize_last())
                     # env.visualize()
                 break
