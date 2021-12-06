@@ -41,17 +41,14 @@ def play(is_testing):
     sum_rewards = 0
 
     for episode in range(Config.episodes):
-        agent_rewards = []
-        option_lengths = {opt: [] for opt in range(Config.num_options)}
+        option_lengths =[{opt: [] for opt in range(Config.num_options)} for _ in range(Config.n_agents)]
 
         #obs = env.reset()
-        obss, states, greedy_options = [], [], []
+        states, greedy_options = [], []
+        obs = env.reset()
         for i in range(Config.n_agents):
-            obs = env.reset()
-            state = option_critic[i].get_state(to_tensor(obs))
+            state = option_critic[i].get_state(to_tensor(obs[i]))
             greedy_option = option_critic[i].greedy_option(state)
-
-            obss.append(obs)
             states.append(state)
             greedy_options.append(greedy_option)
 
@@ -64,20 +61,20 @@ def play(is_testing):
         done = False
         ep_steps = 0
         option_termination = [True for _ in range(Config.n_agents)]
-        curr_op_len = 0
+        curr_op_len = np.zeros(Config.n_agents, dtype=np.int)
         # print("=====================================================================")
         while True:
             steps += 1
             actions, logps, entropys, epsilons = [], [], [], []
-            next_obs, rewards, dones = [], [], []
+            # next_obs, rewards, dones = [], [], []
             for i in range(Config.n_agents):
                 epsilon = option_critic[i].epsilon
                 epsilons.append(epsilon)
 
-                if option_termination:
-                    option_lengths[current_options[i]].append(curr_op_len)
+                if option_termination[i]:
+                    option_lengths[i][current_options[i]].append(curr_op_len)
                     current_options[i] = np.random.choice(Config.num_options) if np.random.rand() < epsilons[i] else greedy_options[i]
-                    curr_op_len = 0
+                    curr_op_len[i] = 0
 
                 # act
                 action, logp, entropy = option_critic[i].get_action(states[i], current_options[i])
@@ -89,65 +86,74 @@ def play(is_testing):
                 entropys.append(entropy)
 
 
-                # step
-                next_ob, reward, done = env.step(action[i])
-                buffer.push(obss[i], current_options[i], reward, next_ob, done)
+            # step
+            next_ob, reward, done = env.step(actions)
+            for i in range(Config.n_agents):
+
+                memories[i].push(obs[i], current_options[i], reward[i], next_ob[i], done[i])
 
                 old_states = states
-                states[i] = option_critic[i].get_state(to_tensor(next_ob))
+                states[i] = option_critic[i].get_state(to_tensor(next_ob[i]))
                 option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i], current_options[i])
 
-                next_obs.append(next_ob)
-                rewards.append(reward)
-                dones.append(done)
+                # next_obs.append(next_ob)
+                # rewards.append(reward)
+                # dones.append(done)
+                if not is_testing:
+                    actor_losss, critic_losss = [], []
 
-            agent_rewards += rewards
+                    # size = memories[0].pointer
+                    # batch = random.sample(range(size), size) if size < Config.batch_size else random.sample(
+                    #     range(size), Config.batch_size)
+                    #
+                    # obs_batch, option_batch, reward_batch, obs_next_batch, done_batch = [], [], [], [], []
+                    # for i in range(env.n_agents):
+                    #     memories[i].push(obs[i], current_options[i], rewards[i], next_obs[i], done[i])
+                    #
+                    #     if len(memories[i]) > Config.batch_size * 10:
+                    #         obs, opt, r, obs_n, d = memories[i].sample(batch)
+                    #         obs_batch.append(obs)
+                    #         option_batch.append(opt)
+                    #         r = np.reshape(r, (Config.batch_size, 1))
+                    #         reward_batch.append(r)
+                    #         obs_next_batch.append(obs_n)
+                    #         done_batch.append(d)
 
-            sum_rewards += np.sum(rewards)
+                    if len(memories[0]) > Config.batch_size * 10:
+                        actor_loss = actor_loss_fn(obs[i], current_options[i], logps[i], entropys[i],
+                                                    reward[i], done[i], next_ob[i], option_critic[i],
+                                                    option_critic_prime[i])
+                        L = 0
+                        models = option_critic[i].options_W
+                        L += torch.abs(models[current_options[i], :, :] - models[0, :, :]) \
+                             + torch.abs(models[current_options[i], :, :] - models[1, :, :]) \
+                             + torch.abs(models[current_options[i], :, :] - models[2, :, :])
+
+                        actor_losss += L
+                        loss = actor_loss
+                        if steps % 4 == 0:
+                            data_batch = memories[i].sample(Config.batch_size)
+                            critic_loss = critic_loss_fn(option_critic[i], option_critic_prime[i], data_batch)
+                            loss += critic_loss
+
+                        optim[i].zero_grad()
+                        loss.backward()
+                        optim[i].step()
+
+                        episode_losses[i] += loss.item()
+                    else:
+                        episode_losses[i] = -1
+
+
+            sum_rewards += np.sum(reward)
             # print([env.agents[i].pos for i in range(env.n_agents)])
             # env.visualize()
             # learn
 
-            if not is_testing:
-                actor_losss, critic_losss = [], []
 
-                # size = memories[0].pointer
-                # batch = random.sample(range(size), size) if size < Config.batch_size else random.sample(
-                #     range(size), Config.batch_size)
-                #
-                # obs_batch, option_batch, reward_batch, obs_next_batch, done_batch = [], [], [], [], []
-                # for i in range(env.n_agents):
-                #     memories[i].push(obs[i], current_options[i], rewards[i], next_obs[i], done[i])
-                #
-                #     if len(memories[i]) > Config.batch_size * 10:
-                #         obs, opt, r, obs_n, d = memories[i].sample(batch)
-                #         obs_batch.append(obs)
-                #         option_batch.append(opt)
-                #         r = np.reshape(r, (Config.batch_size, 1))
-                #         reward_batch.append(r)
-                #         obs_next_batch.append(obs_n)
-                #         done_batch.append(d)
 
-                if len(memories[0]) > Config.batch_size * 10:
-                    actor_loss = [actor_loss_fn(obss[i], current_options[i], logps[i], entropys[i], \
-                                  rewards[i], dones[i], next_obs[i], option_critic[i], option_critic_prime[i]) \
-                                  for i in range(Config.n_agents)]
-                    loss = actor_loss
-                    if steps % 4 == 0:
-                        data_batch = buffer.sample(Config.batch_size)
-                        critic_loss = [critic_loss_fn(option_critic[i], option_critic_prime[i], data_batch)]
-                        loss += critic_loss
-
-                    optim.zero_grad()
-                    loss.backward()
-                    optim.step()
-
-                    episode_losses += loss
-                else:
-                    episode_losses = -1 * np.ones_like(episode_losses)
-
-            states = next_obs
-            episode_rewards += rewards
+            obs = next_ob
+            episode_rewards += reward
 
             # reset states if done
             if any(done):
@@ -181,7 +187,7 @@ if __name__ == '__main__':
     random.seed(Config.random_seed)
     np.random.seed(Config.random_seed)
     torch.manual_seed(Config.random_seed)
-    buffer = ReplayBuffer(Config.memory_size)
+
     for n_agent in [4]:
         Config.n_agents = n_agent
         Config.update()
@@ -227,6 +233,7 @@ if __name__ == '__main__':
                     theta=ou_theta[i],
                     dt=ou_dt[i],
                     x0=ou_x0[i]))
+                buffer = ReplayBuffer(Config.memory_size)
                 memories.append(buffer)
 
             start_time = time.time()

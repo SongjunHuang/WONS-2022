@@ -35,7 +35,7 @@ class Config:
     lr_actor = 0.001
     lr_critic = 0.005
 
-    num_options = 5
+    num_options = 3
 
     hidden_size = 128
 
