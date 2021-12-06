@@ -94,7 +94,7 @@ def play(is_testing):
 
                 old_states = states
                 states[i] = option_critic[i].get_state(to_tensor(next_ob[i])).detach()
-                option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i], current_options[i])
+                option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i],current_options[i])
 
                 # next_obs.append(next_ob)
                 # rewards.append(reward)
