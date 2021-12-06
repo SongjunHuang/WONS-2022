@@ -4,16 +4,18 @@ import random
 import os
 import torch
 
+from copy import deepcopy
 from environment.grid import GridEnv
 from environment.world import GridWorld
 from models.option_critic import OptionCriticFeatures
-from models.option_critic import actor_loss
-from models.option_critic import critic_loss
+from models.option_critic import actor_loss as actor_loss_fn
+from models.option_critic import critic_loss as critic_loss_fn
 # from models.maac_seperate import MADDPG
 # from utils.memory import Memory
-from utils.replay_buffer import Memory
+from utils.experience_replay import ReplayBuffer
 from utils.ornstein_uhlenbeck import OrnsteinUhlenbeckActionNoise
 from utils import general_utilities as general_utilities
+from utils.utils import to_tensor
 from config import Config
 
 
@@ -32,57 +34,119 @@ def play(is_testing):
     statistics_header.extend(["ou_x0_{}".format(i) for i in range(env.n_agents)])
     print("Collecting statistics {}:".format(" ".join(statistics_header)))
     statistics = general_utilities.Time_Series_Statistics_Store(statistics_header)
+
+    option_critic_prime = [deepcopy(option_critic[i]) for i in range(Config.n_agents)]
+    optim = [torch.optim.RMSprop(option_critic[i].parameters(), lr=Config.lr_actor) for i in range(Config.n_agents)]
+
     sum_rewards = 0
+
     for episode in range(Config.episodes):
-        states = env.reset()
+        agent_rewards = []
+        option_lengths = {opt: [] for opt in range(Config.num_options)}
+
+        #obs = env.reset()
+        obss, states, greedy_options = [], [], []
+        for i in range(Config.n_agents):
+            obs = env.reset()
+            state = option_critic[i].get_state(to_tensor(obs))
+            greedy_option = option_critic[i].greedy_option(state)
+
+            obss.append(obs)
+            states.append(state)
+            greedy_options.append(greedy_option)
+
+        current_options = np.zeros(Config.n_agents, dtype=np.int)
         episode_losses = np.zeros(env.n_agents)
         episode_rewards = np.zeros(env.n_agents)
         collision_count = np.zeros(env.n_agents)
         steps = 0
+
+        done = False
+        ep_steps = 0
+        option_termination = [True for _ in range(Config.n_agents)]
+        curr_op_len = 0
         # print("=====================================================================")
         while True:
             steps += 1
-            # act
-            actions = maddpgs.choose_action(states)
-            # print(states, actions)
-            for i in range(env.n_agents):
-                actions[i] = np.clip(actions[i] + actors_noise[i](), -2, 2)
-                # actions[i] = actions[i] + actors_noise[i]()
-                # actions.append(action)
-            # print(actions)
+            actions, logps, entropys, epsilons = [], [], [], []
+            next_obs, rewards, dones = [], [], []
+            for i in range(Config.n_agents):
+                epsilon = option_critic[i].epsilon
+                epsilons.append(epsilon)
 
-            # step
-            states_next, rewards, done = env.step(actions)
+                if option_termination:
+                    option_lengths[current_options[i]].append(curr_op_len)
+                    current_options[i] = np.random.choice(Config.num_options) if np.random.rand() < epsilons[i] else greedy_options[i]
+                    curr_op_len = 0
+
+                # act
+                action, logp, entropy = option_critic[i].get_action(states[i], current_options[i])
+
+                # print(states, actions)
+                #action = np.clip(action.detach().cpu().numpy() + actors_noise[i](), -2, 2)
+                actions.append(action)
+                logps.append(logp)
+                entropys.append(entropy)
+
+
+                # step
+                next_ob, reward, done = env.step(action[i])
+                buffer.push(obss[i], current_options[i], reward, next_ob, done)
+
+                old_states = states
+                states[i] = option_critic[i].get_state(to_tensor(next_ob))
+                option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i], current_options[i])
+
+                next_obs.append(next_ob)
+                rewards.append(reward)
+                dones.append(done)
+
+            agent_rewards += rewards
+
             sum_rewards += np.sum(rewards)
             # print([env.agents[i].pos for i in range(env.n_agents)])
             # env.visualize()
             # learn
+
             if not is_testing:
-                if np.random.rand() >= Config.comm_fail_prob:
-                    size = memories[0].pointer
-                    batch = random.sample(range(size), size) if size < Config.batch_size else random.sample(
-                        range(size), Config.batch_size)
+                actor_losss, critic_losss = [], []
 
-                    state_batch, action_batch, reward_batch, state_next_batch, done_batch = [], [], [], [], []
-                    for i in range(env.n_agents):
-                        memories[i].remember(states[i], actions[i], rewards[i], states_next[i], done[i])
+                # size = memories[0].pointer
+                # batch = random.sample(range(size), size) if size < Config.batch_size else random.sample(
+                #     range(size), Config.batch_size)
+                #
+                # obs_batch, option_batch, reward_batch, obs_next_batch, done_batch = [], [], [], [], []
+                # for i in range(env.n_agents):
+                #     memories[i].push(obs[i], current_options[i], rewards[i], next_obs[i], done[i])
+                #
+                #     if len(memories[i]) > Config.batch_size * 10:
+                #         obs, opt, r, obs_n, d = memories[i].sample(batch)
+                #         obs_batch.append(obs)
+                #         option_batch.append(opt)
+                #         r = np.reshape(r, (Config.batch_size, 1))
+                #         reward_batch.append(r)
+                #         obs_next_batch.append(obs_n)
+                #         done_batch.append(d)
 
-                        if memories[i].pointer > Config.batch_size * 10:
-                            s, a, r, sn, d = memories[i].sample(batch)
-                            state_batch.append(s)
-                            action_batch.append(a)
-                            r = np.reshape(r, (Config.batch_size, 1))
-                            reward_batch.append(r)
-                            state_next_batch.append(sn)
-                            done_batch.append(d)
+                if len(memories[0]) > Config.batch_size * 10:
+                    actor_loss = [actor_loss_fn(obss[i], current_options[i], logps[i], entropys[i], \
+                                  rewards[i], dones[i], next_obs[i], option_critic[i], option_critic_prime[i]) \
+                                  for i in range(Config.n_agents)]
+                    loss = actor_loss
+                    if steps % 4 == 0:
+                        data_batch = buffer.sample(Config.batch_size)
+                        critic_loss = [critic_loss_fn(option_critic[i], option_critic_prime[i], data_batch)]
+                        loss += critic_loss
 
-                    if memories[0].pointer > Config.batch_size * 10:
-                        loss = maddpgs.learn(state_batch, action_batch, reward_batch, state_next_batch, done_batch)
-                        episode_losses += loss
-                    else:
-                        episode_losses = -1 * np.ones_like(episode_losses)
+                    optim.zero_grad()
+                    loss.backward()
+                    optim.step()
 
-            states = states_next
+                    episode_losses += loss
+                else:
+                    episode_losses = -1 * np.ones_like(episode_losses)
+
+            states = next_obs
             episode_rewards += rewards
 
             # reset states if done
@@ -117,7 +181,8 @@ if __name__ == '__main__':
     random.seed(Config.random_seed)
     np.random.seed(Config.random_seed)
     torch.manual_seed(Config.random_seed)
-    for n_agent in [4, 6, 8]:
+    buffer = ReplayBuffer(Config.memory_size)
+    for n_agent in [4]:
         Config.n_agents = n_agent
         Config.update()
         print(Config.n_agents, Config.scheme, Config.comm_fail_prob)
@@ -132,7 +197,8 @@ if __name__ == '__main__':
             # init env
             world = GridWorld(Config.grid_width, Config.grid_height, Config.fov, Config.xyreso, Config.yawreso,
                               Config.sensing_range, Config.n_targets)
-            env = GridEnv(world, discrete=Config.discrete, n_agents=Config.n_agents, max_step=Config.max_step, step_size=Config.step_size)
+            env = GridEnv(world, discrete=Config.discrete, n_agents=Config.n_agents, max_step=Config.max_step,
+                          step_size=Config.step_size)
 
             # Extract ou initialization values
             ou_mus = [np.zeros(env.action_space[i]) for i in range(env.n_agents)]
@@ -143,7 +209,11 @@ if __name__ == '__main__':
 
             # set random seed
 
-            option_critics = OptionCriticFeatures
+            option_critic = [OptionCriticFeatures(
+                in_features=env.observation_space[0],
+                num_actions=env.action_space[0],
+                num_options=Config.num_options
+            ) for _ in range(Config.n_agents)]
             actors_noise = []
             memories = []
             for i in range(env.n_agents):
@@ -157,7 +227,7 @@ if __name__ == '__main__':
                     theta=ou_theta[i],
                     dt=ou_dt[i],
                     x0=ou_x0[i]))
-                memories.append(Memory(Config.memory_size))
+                memories.append(buffer)
 
             start_time = time.time()
 
@@ -170,6 +240,7 @@ if __name__ == '__main__':
             #                       args.weights_filename_prefix, session.graph)
             # save_path = saver.save(session, os.path.join(
             #     args.experiment_prefix + args.weights_filename_prefix, "models"), global_step=args.episodes)
-            save_path = Config.experiment_prefix + Config.scheme + '/' + Config.csv_filename_prefix + "_{}.csv".format(rounds)
+            save_path = Config.experiment_prefix + Config.scheme + '/' + Config.csv_filename_prefix + "_{}.csv".format(
+                rounds)
             statistics.dump(save_path)
             print("saving model to {}".format(save_path))

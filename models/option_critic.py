@@ -67,7 +67,7 @@ class OptionCriticFeatures(nn.Module):
         option_termination = Bernoulli(termination).sample()
         Q = self.get_Q(state)
         next_option = Q.argmax(dim=-1)
-        return bool(option_termination.item()), next_option.item()
+        return bool(option_termination), next_option
 
     def get_terminations(self, state):
         return self.terminations(state).sigmoid()
@@ -81,11 +81,12 @@ class OptionCriticFeatures(nn.Module):
         logp = action_dist.log_prob(action)
         entropy = action_dist.entropy()
 
-        return action.item(), logp, entropy
+        return action, logp, entropy
 
     def greedy_option(self, state):
         Q = self.get_Q(state)
-        return Q.argmax(dim=-1).item()
+        print(Q.shape)
+        return Q.argmax(dim=-1)
 
     @property
     def epsilon(self):
@@ -97,8 +98,7 @@ class OptionCriticFeatures(nn.Module):
         return eps
 
 
-
-def critic_loss(model, model_prime, data_batch, args):
+def critic_loss(model, model_prime, data_batch):
     obs, options, rewards, next_obs, dones = data_batch
     batch_idx = torch.arange(len(options)).long()
     options = torch.LongTensor(options).to(model.device)
@@ -119,7 +119,7 @@ def critic_loss(model, model_prime, data_batch, args):
     next_options_term_prob = next_termination_probs[batch_idx, options]
 
     # Now we can calculate the update target gt
-    gt = rewards + masks * args.gamma * \
+    gt = rewards + masks * 0.99 * \
          ((1 - next_options_term_prob) * next_Q_prime[batch_idx, options] + next_options_term_prob *
           next_Q_prime.max(dim=-1)[0])
 
@@ -128,7 +128,7 @@ def critic_loss(model, model_prime, data_batch, args):
     return td_err
 
 
-def actor_loss(obss, options, logps, entropys, rewards, dones, next_obss, models, model_primes, argss):
+def actor_loss(obss, options, logps, entropys, rewards, dones, next_obss, models, model_primes):
     for i in range(Config.n_agents):
         state = models[i].get_state(to_tensor(obss[i]))
         next_state = models[i].get_state(to_tensor(next_obss[i]))
@@ -141,21 +141,23 @@ def actor_loss(obss, options, logps, entropys, rewards, dones, next_obss, models
         next_Q_prime = model_primes[i].get_Q(next_state_prime).detach().squeeze()
 
         # Target update gt
-        gt = rewards[i] + (1 - dones[i]) * argss[i].gamma * \
-             ((1 - next_option_term_prob) * next_Q_prime[options[i]] + next_option_term_prob * next_Q_prime.max(dim=-1)[0])
+        gt = rewards[i] + (1 - dones[i]) * 0.99 * \
+             ((1 - next_option_term_prob) * next_Q_prime[options[i]] + next_option_term_prob * next_Q_prime.max(dim=-1)[
+                 0])
 
         # The termination loss
-        termination_loss = option_term_prob * (Q[options[i]].detach() - Q.max(dim=-1)[0].detach() + argss.termination_reg) * (
-                1 - dones[i])
+        termination_loss = option_term_prob * (
+                    Q[options[i]].detach() - Q.max(dim=-1)[0].detach() + 0.01) * (
+                                   1 - dones[i])
 
         # actor-critic policy gradient with entropy regularization
-        policy_loss = -logps[i] * (gt.detach() - Q[options[i]]) - argss.entropy_reg * entropys[i]
+        policy_loss = -logps[i] * (gt.detach() - Q[options[i]]) - 0.01 * entropys[i]
 
         L = 0
         L += np.abs(models[i].option_W[i, :, :] - models[i].option_W[1, :, :]) \
-          + np.abs(models[i].option_W[i, :, :] - models[i].option_W[2, :, :]) \
-          + np.abs(models[i].option_W[i, :, :] - models[i].option_W[3, :, :])
+             + np.abs(models[i].option_W[i, :, :] - models[i].option_W[2, :, :]) \
+             + np.abs(models[i].option_W[i, :, :] - models[i].option_W[3, :, :])
 
         policy_loss += L
-        actor_loss = termination_loss + policy_loss
-    return actor_loss
+        actor_loss_value = termination_loss + policy_loss
+    return actor_loss_value

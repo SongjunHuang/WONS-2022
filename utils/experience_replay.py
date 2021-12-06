@@ -6,9 +6,12 @@ class ReplayBuffer(object):
     def __init__(self, capacity, seed=42):
         self.rng = random.SystemRandom(seed)
         self.buffer = deque(maxlen=capacity)
+        self.pointer = 0
 
     def push(self, obs, option, reward, next_obs, done):
         self.buffer.append((obs, option, reward, next_obs, done))
+        if self.pointer < len(self.buffer):
+            self.pointer += 1
 
     def sample(self, batch_size):
         obs, option, reward, next_obs, done = zip(*self.rng.sample(self.buffer, batch_size))

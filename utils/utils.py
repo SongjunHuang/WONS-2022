@@ -5,7 +5,6 @@ import torch
 from gym.wrappers import AtariPreprocessing, TransformReward
 from gym.wrappers import FrameStack as FrameStack_
 
-from fourrooms import Fourrooms
 
 
 class LazyFrames(object):
