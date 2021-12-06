@@ -115,7 +115,7 @@ if __name__ == '__main__':
     random.seed(Config.random_seed)
     np.random.seed(Config.random_seed)
     torch.manual_seed(Config.random_seed)
-    for n_agent in [4]:
+    for n_agent in [4, 6, 8]:
         Config.n_agents = n_agent
         Config.update()
         print(Config.n_agents, Config.scheme, Config.comm_fail_prob)
