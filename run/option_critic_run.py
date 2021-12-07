@@ -10,6 +10,7 @@ from environment.world import GridWorld
 from models.option_critic import OptionCriticFeatures
 from models.option_critic import actor_loss as actor_loss_fn
 from models.option_critic import critic_loss as critic_loss_fn
+from models.option_critic import merge_critics
 # from models.maac_seperate import MADDPG
 # from utils.memory import Memory
 from utils.experience_replay import ReplayBuffer
@@ -39,11 +40,8 @@ def play(is_testing):
     optim = [torch.optim.RMSprop(option_critic[i].parameters(), lr=Config.lr_actor) for i in range(Config.n_agents)]
 
     sum_rewards = 0
-
     for episode in range(Config.episodes):
-        option_lengths =[{opt: [] for opt in range(Config.num_options)} for _ in range(Config.n_agents)]
-
-        #obs = env.reset()
+        option_lengths = [{opt: [] for opt in range(Config.num_options)} for _ in range(Config.n_agents)]
         states, greedy_options = [], []
         obs = env.reset()
         for i in range(Config.n_agents):
@@ -57,12 +55,8 @@ def play(is_testing):
         episode_rewards = np.zeros(env.n_agents)
         collision_count = np.zeros(env.n_agents)
         steps = 0
-
-        done = False
-        ep_steps = 0
         option_termination = [True for _ in range(Config.n_agents)]
         curr_op_len = np.zeros(Config.n_agents, dtype=np.int)
-        # print("=====================================================================")
         while True:
             steps += 1
             actions, logps, entropys, epsilons = [], [], [], []
@@ -70,59 +64,30 @@ def play(is_testing):
             for i in range(Config.n_agents):
                 epsilon = option_critic[i].epsilon
                 epsilons.append(epsilon)
-
                 if option_termination[i]:
                     option_lengths[i][current_options[i]].append(curr_op_len)
-                    current_options[i] = np.random.choice(Config.num_options) if np.random.rand() < epsilons[i] else greedy_options[i]
+                    current_options[i] = np.random.choice(Config.num_options) if np.random.rand() < epsilons[i] else \
+                        greedy_options[i]
                     curr_op_len[i] = 0
-
                 # act
                 action, logp, entropy = option_critic[i].get_action(states[i], current_options[i])
-
-                # print(states, actions)
-                #action = np.clip(action.detach().cpu().numpy() + actors_noise[i](), -2, 2)
                 actions.append(action)
                 logps.append(logp)
                 entropys.append(entropy)
 
-
             # step
             next_ob, reward, done = env.step(actions)
             for i in range(Config.n_agents):
-
                 memories[i].push(obs[i], current_options[i], reward[i], next_ob[i], done[i])
-
-                old_states = states
                 states[i] = option_critic[i].get_state(to_tensor(next_ob[i])).detach()
-                option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i],current_options[i])
-
-                # next_obs.append(next_ob)
-                # rewards.append(reward)
-                # dones.append(done)
+                option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i],
+                                                                                                       current_options[i])
                 if not is_testing:
                     actor_losss, critic_losss = [], []
-
-                    # size = memories[0].pointer
-                    # batch = random.sample(range(size), size) if size < Config.batch_size else random.sample(
-                    #     range(size), Config.batch_size)
-                    #
-                    # obs_batch, option_batch, reward_batch, obs_next_batch, done_batch = [], [], [], [], []
-                    # for i in range(env.n_agents):
-                    #     memories[i].push(obs[i], current_options[i], rewards[i], next_obs[i], done[i])
-                    #
-                    #     if len(memories[i]) > Config.batch_size * 10:
-                    #         obs, opt, r, obs_n, d = memories[i].sample(batch)
-                    #         obs_batch.append(obs)
-                    #         option_batch.append(opt)
-                    #         r = np.reshape(r, (Config.batch_size, 1))
-                    #         reward_batch.append(r)
-                    #         obs_next_batch.append(obs_n)
-                    #         done_batch.append(d)
-
                     if len(memories[0]) > Config.batch_size * 10:
                         actor_loss = actor_loss_fn(obs[i], current_options[i], logps[i], entropys[i],
-                                                    reward[i], done[i], next_ob[i], option_critic[i],
-                                                    option_critic_prime[i])
+                                                   reward[i], done[i], next_ob[i], option_critic[i],
+                                                   option_critic_prime[i])
                         L = 0
                         models = option_critic[i].options_W
                         L += torch.abs(models[current_options[i], :, :] - models[0, :, :]) \
@@ -139,19 +104,12 @@ def play(is_testing):
                         optim[i].zero_grad()
                         loss.backward()
                         optim[i].step()
-
                         episode_losses[i] += loss.item()
                     else:
                         episode_losses[i] = -1
-
-
-            sum_rewards += np.sum(reward)
-            # print([env.agents[i].pos for i in range(env.n_agents)])
-            # env.visualize()
-            # learn
-
-
-
+            if steps % 10 == 0:
+                merge_critics([option_critic[i].features for i in range(env.n_agents)])
+                merge_critics([option_critic[i].Q for i in range(env.n_agents)])
             obs = next_ob
             episode_rewards += reward
 
@@ -187,8 +145,9 @@ if __name__ == '__main__':
     random.seed(Config.random_seed)
     np.random.seed(Config.random_seed)
     torch.manual_seed(Config.random_seed)
+    torch.cuda.manual_seed(Config.random_seed)
 
-    for n_agent in [4, 6, 8]:
+    for n_agent in [8]:
         Config.n_agents = n_agent
         Config.update()
         print(Config.n_agents, Config.scheme, Config.comm_fail_prob)
@@ -197,9 +156,6 @@ if __name__ == '__main__':
         if not os.path.exists(Config.experiment_prefix + Config.scheme):
             os.makedirs(Config.experiment_prefix + Config.scheme)
         for rounds in range(8):
-            # general_utilities.dump_dict_as_json(general_utilities.get_vars(vars(Config)),
-            #                                     Config.experiment_prefix + "/save/run_parameters_{}.json".format(rounds))
-
             # init env
             world = GridWorld(Config.grid_width, Config.grid_height, Config.fov, Config.xyreso, Config.yawreso,
                               Config.sensing_range, Config.n_targets)
@@ -237,7 +193,6 @@ if __name__ == '__main__':
                 memories.append(buffer)
 
             start_time = time.time()
-
             # play
             statistics = play(is_testing=False)
             # maddpgs.save_model("../results/model/")

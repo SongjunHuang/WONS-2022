@@ -45,11 +45,11 @@ class Critic(nn.Module):
     def __init__(self, state_space, action_space):
         super(Critic, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(state_space + action_space, 256),
+            nn.Linear(state_space + action_space, 128),
             nn.ReLU(),
-            nn.Linear(256, 256),
+            nn.Linear(128, 128),
             nn.ReLU(),
-            nn.Linear(256, 1)
+            nn.Linear(128, 1)
         )
 
     def forward(self, state, action):
@@ -60,7 +60,7 @@ class Critic(nn.Module):
 
 class MADDPG:
     def __init__(self, state_size, action_size, n_agent, gamma=0.99, lr_actor=0.01, lr_critic=0.05,
-                 EPS_START=0.9, EPS_END=0.2, EPS_DECAY=100, update_freq=200):
+                 EPS_START=1, EPS_END=0.1, EPS_DECAY=int(1e6), update_freq=200):
         self.state_size = state_size
         self.action_size = action_size
         self.n_agent = n_agent
@@ -107,8 +107,13 @@ class MADDPG:
         actions = [np.argmax(action) for action in actions]
         return actions
 
+    # def epsilon(self):
+    #     return self.EPS_END + (self.EPS_START - self.EPS_END) * np.exp(-1. * self.steps / self.EPS_DECAY)
+
     def epsilon(self):
-        return self.EPS_END + (self.EPS_START - self.EPS_END) * np.exp(-1. * self.steps / self.EPS_DECAY)
+        eps = self.EPS_END + (self.EPS_START - self.EPS_END) * np.exp(-self.steps / self.EPS_DECAY)
+        self.steps += 1
+        return eps
 
     def learn(self, s, a, r, sn, d):
         states = [self.to_tensor(state) for state in s]

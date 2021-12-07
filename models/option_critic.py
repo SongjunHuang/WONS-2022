@@ -150,6 +150,17 @@ def actor_loss(obs, options, logps, entropys, rewards, dones, next_obss, models,
     # actor-critic policy gradient with entropy regularization
     policy_loss = -logps * (gt.detach() - Q[options]) - 0.01 * entropys
 
-
     actor_loss_value = termination_loss + policy_loss
     return actor_loss_value
+
+
+def merge_critics(models):
+    n_model = len(models)
+    state_dict = models[0].state_dict().copy()
+    for key in state_dict:
+        state_dict[key] = state_dict[key] / n_model
+    for key in state_dict:
+        for model in models[1:]:
+            state_dict[key] = state_dict[key] + model.state_dict()[key] / n_model
+    for model in models:
+        model.load_state_dict(state_dict)

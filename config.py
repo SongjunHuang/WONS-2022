@@ -7,14 +7,14 @@ class Config:
     scheme = None
     csv_filename_prefix = None
     model_filename_prefix = None
-    scheme_template = 'personality_{}agents_{}comm'
+    scheme_template = 'ma_personality_{}agents_{}comm'
     experiment_prefix = '../results/'
     csv_filename_prefix_template = '/save/statistics-{}'
     model_filename_prefix_template = '/model/model-{}'
     discrete = False
 
     random_seed = 2022
-    epsilon=0.6
+    epsilon = 0.6
     memory_size = 100000
     batch_size = 32
     grid_width = 20
