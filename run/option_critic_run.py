@@ -88,13 +88,13 @@ def play(is_testing):
                         actor_loss = actor_loss_fn(obs[i], current_options[i], logps[i], entropys[i],
                                                    reward[i], done[i], next_ob[i], option_critic[i],
                                                    option_critic_prime[i])
-                        L = 0
-                        models = option_critic[i].options_W
-                        L += torch.abs(models[current_options[i], :, :] - models[0, :, :]) \
-                             + torch.abs(models[current_options[i], :, :] - models[1, :, :]) \
-                             + torch.abs(models[current_options[i], :, :] - models[2, :, :])
-
-                        actor_losss += L
+                        # L = 0
+                        # models = option_critic[i].options_W
+                        # L += torch.abs(models[current_options[i], :, :] - models[0, :, :]) \
+                        #      + torch.abs(models[current_options[i], :, :] - models[1, :, :]) \
+                        #      + torch.abs(models[current_options[i], :, :] - models[2, :, :])
+                        #
+                        # actor_losss += L
                         loss = actor_loss
                         if steps % 4 == 0:
                             data_batch = memories[i].sample(Config.batch_size)
