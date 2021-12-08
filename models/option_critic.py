@@ -17,7 +17,7 @@ class OptionCriticFeatures(nn.Module):
                  temperature=1.0,
                  eps_start=1.0,
                  eps_min=0.1,
-                 eps_decay=int(1e6),
+                 eps_decay=int(100),
                  eps_test=0.05,
                  device='cuda',
                  testing=False):

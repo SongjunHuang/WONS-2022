@@ -83,11 +83,11 @@ def play(is_testing):
                 option_termination[i], greedy_options[i] = option_critic[i].predict_option_termination(states[i],
                                                                                                        current_options[i])
                 if not is_testing:
-                    actor_losss, critic_losss = [], []
                     if len(memories[0]) > Config.batch_size * 10:
                         actor_loss = actor_loss_fn(obs[i], current_options[i], logps[i], entropys[i],
                                                    reward[i], done[i], next_ob[i], option_critic[i],
                                                    option_critic_prime[i])
+<<<<<<< HEAD
                         # L = 0
                         # models = option_critic[i].options_W
                         # L += torch.abs(models[current_options[i], :, :] - models[0, :, :]) \
@@ -95,6 +95,14 @@ def play(is_testing):
                         #      + torch.abs(models[current_options[i], :, :] - models[2, :, :])
                         #
                         # actor_losss += L
+=======
+                        models = option_critic[i].options_W
+                        L = torch.sum(torch.abs(models[current_options[i], :, :] - models[0, :, :]) \
+                             + torch.abs(models[current_options[i], :, :] - models[1, :, :]) \
+                             + torch.abs(models[current_options[i], :, :] - models[2, :, :]))
+
+                        actor_loss -= L
+>>>>>>> ca048577c60f5abbd6c57be1710746107615da17
                         loss = actor_loss
                         if steps % 4 == 0:
                             data_batch = memories[i].sample(Config.batch_size)
@@ -107,9 +115,9 @@ def play(is_testing):
                         episode_losses[i] += loss.item()
                     else:
                         episode_losses[i] = -1
-            if steps % 10 == 0:
-                merge_critics([option_critic[i].features for i in range(env.n_agents)])
-                merge_critics([option_critic[i].Q for i in range(env.n_agents)])
+            # if steps % 10 == 0:
+            #     merge_critics([option_critic[i].features for i in range(env.n_agents)])
+            #     merge_critics([option_critic[i].Q for i in range(env.n_agents)])
             obs = next_ob
             episode_rewards += reward
 
@@ -147,7 +155,7 @@ if __name__ == '__main__':
     torch.manual_seed(Config.random_seed)
     torch.cuda.manual_seed(Config.random_seed)
 
-    for n_agent in [8]:
+    for n_agent in [4, 6, 8]:
         Config.n_agents = n_agent
         Config.update()
         print(Config.n_agents, Config.scheme, Config.comm_fail_prob)
@@ -155,7 +163,7 @@ if __name__ == '__main__':
         # print("running experiment for {} agents".format(n_agent))
         if not os.path.exists(Config.experiment_prefix + Config.scheme):
             os.makedirs(Config.experiment_prefix + Config.scheme)
-        for rounds in range(8):
+        for rounds in range(5):
             # init env
             world = GridWorld(Config.grid_width, Config.grid_height, Config.fov, Config.xyreso, Config.yawreso,
                               Config.sensing_range, Config.n_targets)
