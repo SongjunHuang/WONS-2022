@@ -65,7 +65,8 @@ class GridEnv(object):
     def reset(self):
         self.world.reset()
         if self.discrete:
-            self.agents = [Robot((i, i), 0) for i in range(self.n_agents)]
+            half = int(self.n_agents // 2)
+            self.agents = [Robot((i - half, i - half), 0) for i in range(self.n_agents)]
         else:
             # self.agents = [Robot(np.random.rand(2), 0) for _ in range(self.n_agents)]
             self.agents = [Robot(np.asarray([i * 0.5, i * 0.5]), 0) for i in range(self.n_agents)]
