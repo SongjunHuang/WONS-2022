@@ -93,7 +93,7 @@ def play(is_testing):
                 statistic.extend([episode_rewards[i] for i in range(env.n_agents)])
                 statistic.extend([episode_losses[i] for i in range(env.n_agents)])
                 statistic.extend([np.sum(env.world.occupancy_map > 0) for _ in range(env.n_agents)])
-                statistic.extend([0 for _ in range(env.n_agents)])
+                statistic.extend(env.collision().tolist())
                 statistic.extend([actors_noise[i].theta for i in range(env.n_agents)])
                 statistic.extend([actors_noise[i].mu for i in range(env.n_agents)])
                 statistic.extend([actors_noise[i].sigma for i in range(env.n_agents)])
@@ -115,7 +115,7 @@ if __name__ == '__main__':
     random.seed(Config.random_seed)
     np.random.seed(Config.random_seed)
     torch.manual_seed(Config.random_seed)
-    for n_agent in [4, 6, 8]:
+    for n_agent in [2, 4, 6, 8, 10, 12, 14]:
         Config.n_agents = n_agent
         Config.update()
         print(Config.n_agents, Config.scheme, Config.comm_fail_prob)
